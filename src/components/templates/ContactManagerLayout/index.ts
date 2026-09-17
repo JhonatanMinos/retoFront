@@ -1,0 +1,1 @@
+export { ContactManagerLayout } from "./ContactManagerLayout";

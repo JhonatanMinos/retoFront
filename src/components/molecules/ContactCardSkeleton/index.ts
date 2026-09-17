@@ -1,0 +1,1 @@
+export { ContactCardSkeleton } from "./ContactCardSkeleton";

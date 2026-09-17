@@ -1,0 +1,70 @@
+[
+  {
+    "id": "0f051f6c-6599-49bc-b899-553ab21b5308",
+    "name": "Ana García López",
+    "email": "ana.garcia@example.com",
+    "phone": "33 1234 5678",
+    "department": "Desarrollo"
+  },
+  {
+    "id": "9ba50106-8378-4056-ad10-62308a5b520f",
+    "name": "Carlos Mendoza Ruiz",
+    "email": "carlos.mendoza@example.com",
+    "phone": "33 2345 6789",
+    "department": "Ventas"
+  },
+  {
+    "id": "a830b455-27cd-4480-aa5a-5661b2a2fc76",
+    "name": "Fernanda Torres Silva",
+    "email": "fernanda.torres@example.com",
+    "department": "Marketing"
+  },
+  {
+    "id": "2b24e186-bd5e-47c6-8a7f-1e65247b258a",
+    "name": "Diego Ramírez Ortiz",
+    "email": "diego.ramirez@example.com",
+    "phone": "33 3456 7890",
+    "department": "Soporte"
+  },
+  {
+    "id": "293ec65c-49b1-4465-beb2-4c49e255d71e",
+    "name": "Valentina Cruz Herrera",
+    "email": "valentina.cruz@example.com",
+    "phone": "33 4567 8901",
+    "department": "Desarrollo"
+  },
+  {
+    "id": "e03db742-70a9-4d7a-bf63-3cb38fa5d485",
+    "name": "Miguel Ángel Flores",
+    "email": "miguel.flores@example.com",
+    "department": "Ventas"
+  },
+  {
+    "id": "6bfa6714-025c-463c-aba6-f69a5897c907",
+    "name": "Sofía Jiménez Castro",
+    "email": "sofia.jimenez@example.com",
+    "phone": "33 5678 9012",
+    "department": "Marketing"
+  },
+  {
+    "id": "59433b1a-0086-4ad0-ab76-19440e6ca903",
+    "name": "Javier Morales Vega",
+    "email": "javier.morales@example.com",
+    "phone": "33 6789 0123",
+    "department": "Soporte"
+  },
+  {
+    "id": "785f3236-d838-4afc-b6de-e677894363b9",
+    "name": "Camila Reyes Guzmán",
+    "email": "camila.reyes@example.com",
+    "phone": "33 7890 1234",
+    "department": "Desarrollo"
+  },
+  {
+    "id": "db911bfc-f266-41dd-8adc-0cd583ddbd91",
+    "name": "Roberto Salinas Peña",
+    "email": "roberto.salinas@example.com",
+    "phone": "33 8901 2345",
+    "department": "Ventas"
+  }
+]
