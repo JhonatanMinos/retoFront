@@ -1,177 +1,134 @@
-# Reto Geest — API REST de gestión de tareas
+# Gestor de Contactos con Filtros
 
-API REST en **Node.js + TypeScript + Express + SQLite (better-sqlite3)** que implementa los endpoints del reto con idempotencia, archivado atómico y notificaciones con reintentos.
+> Prueba técnica frontend — listado de contactos, formulario validado y filtros reactivos combinables.
 
-## Stack y decisiones técnicas
+## 🎯 Objetivo
 
-- **Node.js 20+ / TypeScript** — tipado estático y buena ergonomía.
-- **Express** — simple, estable, ecosistema maduro para tests con `supertest`.
-- **SQLite + better-sqlite3** — base de datos SQL real, con transacciones ACID y API **síncrona**, lo que facilita razonar sobre concurrencia en un solo proceso. Fácil de desplegar como archivo persistente.
-- **Zod** — validación declarativa de bodies con mensajes útiles.
-- **Vitest + supertest** — tests unitarios/integración rápidos.
-- **Migraciones versionadas** — `db/migrations/*.sql` aplicadas idempotentemente al arranque.
+SPA en React que combina:
 
-### Cómo se resuelven los requisitos de confiabilidad
+- Listado de contactos (nombre, email, teléfono, departamento)
+- Modal de alta con validación en tiempo real (Formik + Yup)
+- Filtros combinables: texto por nombre + chips por departamento
+- Estados de carga (skeleton) y estado vacío (empty state)
 
-1. **Idempotencia (POST)** — Middleware `idempotencyMiddleware` que:
-   - Lee `Idempotency-Key`. Si no está, ejecuta normal.
-   - Calcula hash del body. Si la misma key llega con otro body → `409 IDEMPOTENCY_CONFLICT`.
-   - Guarda la respuesta completa en `idempotency_keys`. Replays devuelven la respuesta cacheada.
-   - **Paralelismo**: se usa un `Map` de promesas en memoria + `INSERT` atómico en la tabla. Dos requests concurrentes con la misma key esperan la misma promesa y obtienen el mismo resultado. La fila persiste por si el proceso se reinicia.
-2. **Archivado sin duplicados** — Al completar la parte de un usuario se ejecuta `db.transaction(...)` que:
-   - Cuenta asignaciones pendientes.
-   - Solo hace `UPDATE tasks SET status='archived' ... WHERE id=? AND status='open'`.
-   - Si `changes === 1`, ESE request ganó la carrera y dispara la notificación. El otro request obtiene `changes === 0`. Garantiza archivar **y notificar exactamente una vez**, incluso con clics simultáneos.
-3. **Notificaciones con reintentos** — `dispatchNotification` hace `POST` a `NOTIFY_URL` con backoff exponencial (0s, 1s, 2s), máx. 3 intentos. Registra cada intento (`attempt`, `status_code`, `error`, `created_at`) en la tabla `notifications`, consultable vía `GET /tasks/:idTask/notifications`. Se reintenta ante 5xx/errores de red; no ante 4xx.
+Fuente de datos: `data.json` local, cargado como estado inicial en memoria (sin backend).
 
-## Ejecutar localmente
+## 🛠️ Stack tecnológico
 
-Requisitos: Node.js ≥ 20 y `pnpm` ≥ 9.
+| Capa                         | Tecnología                     | Por qué                                                                                                                                                               |
+| ---------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime / gestor de paquetes | **Bun**                        | Instalación de dependencias mucho más rápida que npm/yarn (resuelto en Zig, sin capa intermedia de Node); un solo binario hace de runtime, instalador y test runner.  |
+| Bundler / dev server         | **Vite** (ejecutado sobre Bun) | Bun reemplaza a Node como motor, pero Vite sigue siendo el bundler con HMR más maduro para React — no hay razón para cambiarlo solo por usar Bun.                     |
+| UI                           | **React 18 + TypeScript**      | El tipado estricto del modelo `Contact` / `Department` evita errores de forma o typos en producción — es un requisito explícito de la prueba, no solo buena práctica. |
+| Estilos                      | **Tailwind CSS**               | Utilidades atómicas que encajan de forma natural con Atomic Design: cada átomo lleva sus propias clases, sin hojas de estilo separadas que mantener en sincronía.     |
+| Formularios                  | **Formik + Yup**               | Formik controla estado/touched/submit del form; Yup declara el schema de validación y expone errores en tiempo real sin lógica manual de validación.                  |
+| Formato y lint               | **Biome.js**                   | Un solo binario en Rust reemplaza ESLint + Prettier; formatea y lintea en el mismo comando, sin conflictos de reglas entre ambas herramientas ni doble config.        |
+| IDs                          | `crypto.randomUUID()`          | UUID v4 nativo (navegador y Bun lo soportan) — no hace falta la dependencia `uuid` para esto.                                                                         |
+
+## 🏗️ Arquitectura: Atomic Design
+
+Mapeo directo a los componentes que pide la prueba:
+
+- **Atoms**: `Button`, `Input`, `Label`, `Chip`, `Spinner`, `ErrorText`
+- **Molecules**: `FormField` (Label + Input + ErrorText), `SearchBar`, `DepartmentFilter` (Chip[] con estado activo), `ContactCardSkeleton`
+- **Organisms**: `ContactList` (lista + EmptyState + Skeleton), `ContactForm` (modal + Formik + Yup), `FilterBar` (SearchBar + DepartmentFilter + contador)
+- **Templates**: `ContactManagerLayout`
+- **Pages**: `ContactsPage`
+
+**Por qué atomic design aquí, no en general:**
+
+1. Reusabilidad real y no teórica: `Input`/`Button` se repiten literalmente entre el formulario y la barra de filtros.
+2. Aísla la validación (Formik/Yup) dentro del organism `ContactForm`, sin que se filtre a los átomos.
+3. Cada nivel se testea aislado, sin montar la app completa.
+4. Un revisor de la prueba entiende la estructura solo con ver las carpetas, sin leer todo el código.
+
+**Riesgo a vigilar:** con ~10-12 componentes es fácil crear capas vacías. Regla práctica: si un "molecule" solo envuelve un átomo sin agregar lógica propia, no lo crees — evita indirection sin valor.
+
+## 📁 Estructura de carpetas
+
+```
+src/
+├── components/
+│   ├── atoms/
+│   │   ├── Button/
+│   │   ├── Input/
+│   │   ├── Label/
+│   │   ├── Chip/
+│   │   ├── Spinner/
+│   │   └── ErrorText/
+│   ├── molecules/
+│   │   ├── FormField/
+│   │   ├── SearchBar/
+│   │   ├── DepartmentFilter/
+│   │   └── ContactCardSkeleton/
+│   ├── organisms/
+│   │   ├── ContactList/
+│   │   ├── ContactForm/
+│   │   └── FilterBar/
+│   └── templates/
+│       └── ContactManagerLayout/
+├── hooks/
+│   ├── useContacts.ts        # CRUD en memoria + carga inicial desde data.json
+│   └── useContactFilters.ts  # filtrado combinado (nombre + departamento)
+├── schemas/
+│   └── contactSchema.ts      # Yup schema
+├── types/
+│   └── contact.ts            # Contact, Department
+├── data/
+│   └── data.json
+├── pages/
+│   └── ContactsPage.tsx
+└── App.tsx
+```
+
+## 🔄 Manejo de estado
+
+Solo custom hooks, sin store global — el alcance no lo justifica:
+
+- `useContacts`: array de contactos + `add`/`delete`, carga inicial desde `data.json`.
+- `useContactFilters`: deriva la lista filtrada a partir de `contacts` + texto + departamento activo.
+
+Si más adelante se agrega persistencia o backend real, ahí sí vale la pena evaluar Context o Zustand. Para esta prueba, Redux/Zustand sería sobre-ingeniería.
+
+## ✅ Requerimientos de la prueba
+
+- [ ] React + TypeScript
+- [ ] Carga inicial desde `data.json`
+- [ ] Lista con nombre, email, teléfono, departamento
+- [ ] UUID al agregar contacto
+- [ ] Skeleton loading
+- [ ] EmptyState (sin contactos / sin resultados de filtro)
+- [ ] Botón eliminar contacto
+- [ ] Modal con Formik + Yup (nombre, email, departamento obligatorios)
+- [ ] Errores en tiempo real + botón deshabilitado si hay errores
+- [ ] Búsqueda por nombre en tiempo real
+- [ ] Chips de filtro por departamento
+- [ ] Contador de resultados filtrados
+- [ ] Filtros combinables (nombre + departamento simultáneo)
+- [ ] Repo público en GitHub + README con instrucciones
+- [ ] (Opcional) Deploy en Vercel/Netlify
+
+## 🚀 Instalación y uso
 
 ```bash
-pnpm install
-cp .env.example .env             # opcional
-pnpm migrate                     # aplica migraciones SQL (idempotente)
-pnpm dev                         # arranca en http://localhost:3000
+bun install       # instalar dependencias
+bun run dev       # entorno de desarrollo
+bun run format    # formatear con Biome
+bun run lint      # lint con Biome
+bun run build     # build de producción
 ```
 
-Build de producción:
+El `package.json` completo (dependencias + scripts) está en el mismo entregable, junto a este README. Nota sobre `build`: corre `tsc --noEmit` antes de `vite build` — si hay un error de tipos, el build falla ahí en vez de generar un bundle roto en producción.
 
-```bash
-pnpm build
-pnpm start
-```
+## 📝 Decisiones técnicas (el porqué, no solo el qué)
 
-## Ejecutar los tests
+- **Skeleton sin backend real**: simular con `setTimeout` (~500-800ms) dentro de `useContacts` al montar. Así el loading state es visible sin dejar datos falsos que luego haya que retirar.
+- **EmptyState con una sola variante parametrizada** (`reason: "no-contacts" | "no-results"`): evita duplicar el componente por dos textos distintos.
+- **Yup schema separado del componente**: permite testear las reglas de validación sin montar el modal, y reusarlas si más adelante se agrega edición de contactos.
+- **Biome sobre ESLint + Prettier**: en un proyecto de este tamaño el ahorro real está en no mantener dos configs (`.eslintrc` + `.prettierrc`) que a veces chocan entre reglas de formato y de estilo.
 
-```bash
-pnpm test
-```
+## 🔮 Próximos pasos opcionales
 
-## Variables de entorno
-
-| Var                    | Descripción                             | Default               |
-| ---------------------- | --------------------------------------- | --------------------- |
-| `PORT`                 | Puerto HTTP                             | `3000`                |
-| `DB_FILE`              | Ruta al archivo SQLite                  | `./data.sqlite`       |
-| `NOTIFY_URL`           | URL externa a notificar al archivar     | (vacío → no notifica) |
-| `NOTIFY_RETRY_BASE_MS` | Base del backoff (tests suelen bajarlo) | `1000`                |
-
-## Endpoints
-
-| Método | Ruta                           | Descripción                                             |
-| ------ | ------------------------------ | ------------------------------------------------------- |
-| POST   | `/users`                       | Crea usuario                                            |
-| GET    | `/users`                       | Lista usuarios + tareas pendientes                      |
-| GET    | `/users/:idUser/tasks`         | Tareas del usuario                                      |
-| POST   | `/tasks`                       | Crea tarea (`status: open`)                             |
-| POST   | `/tasks/:idTask/assign`        | Asigna `userIds[]`                                      |
-| POST   | `/tasks/:idTask/complete`      | Marca la parte del usuario. Archiva si todos terminaron |
-| GET    | `/tasks?status=open\|archived` | Lista tareas                                            |
-| GET    | `/tasks/:idTask`               | Detalle con usuarios y completado                       |
-| GET    | `/tasks/:idTask/notifications` | Intentos de notificación                                |
-
-Errores: `{ "error": { "code": "...", "message": "..." } }`.
-
-## UML de la base de datos
-
-```mermaid
-erDiagram
-  USERS ||--o{ TASK_ASSIGNMENTS : "asignado"
-  TASKS ||--o{ TASK_ASSIGNMENTS : "tiene"
-  TASKS ||--o{ NOTIFICATIONS : "genera"
-
-  USERS {
-    int id PK
-    text name
-    text last_name
-    text email UK
-    text created_at
-  }
-  TASKS {
-    int id PK
-    text title
-    text description
-    text status "open|archived"
-    text created_at
-    text archived_at
-  }
-  TASK_ASSIGNMENTS {
-    int task_id PK,FK
-    int user_id PK,FK
-    int completed
-    text completed_at
-  }
-  IDEMPOTENCY_KEYS {
-    text key PK
-    text method
-    text path
-    text body_hash
-    int response_status
-    text response_body
-    text created_at
-  }
-  NOTIFICATIONS {
-    int id PK
-    int task_id FK
-    int attempt
-    int status_code
-    text error
-    text created_at
-  }
-```
-
-## Supuestos ante ambigüedades
-
-- `status` sólo admite `open|archived`.
-- Los `POST` sin `Idempotency-Key` se ejecutan siempre (no son idempotentes por sí mismos); la idempotencia es opt-in vía header.
-- Sólo se cachean respuestas exitosas. Un error no bloquea reintentos con la misma key.
-- Un usuario se puede asignar a una tarea sólo una vez (PK compuesta). Reasignar es no-op exitoso.
-- No se permite asignar a tareas `archived`.
-- Completar la parte de un usuario ya completado es no-op.
-- El email es único por usuario.
-- `NOTIFY_URL` puede estar vacía; en ese caso no se notifica y sólo se registra que no se intentó.
-- No hay autenticación (fuera del alcance del reto).
-
-## Funcionalidad recortada
-
-- Sin autenticación / autorización.
-- Sin paginación en listados.
-- Sin worker de notificaciones en background: los reintentos corren en el mismo proceso con `setTimeout`. En producción real convendría una cola (BullMQ, SQS) o un cron que recupere pendientes del estado persistido.
-
-## Mejora extra — **Borrado lógico de tareas con cascade**
-
-- **Qué problema resuelve**: no había forma de eliminar tareas mal creadas sin perder historial. `DELETE /tasks/:idTask` marca la tarea como `cancelled` (soft delete), la excluye de listados, y registra `cancelled_at`. Se preservan asignaciones y notificaciones para auditoría.
-- **Por qué era necesaria**: los sistemas de gestión de trabajo reales necesitan poder cancelar tareas; el archivado sólo aplica al flujo feliz.
-- **Por qué esta y no otras**: es un cambio de alto valor y bajo costo, no toca los flujos existentes (no rompe la máquina de estados `open → archived`), y demuestra diseño de estados. Alternativas como autenticación o import { a as ClassValue, c as EngineOptions, d as ValidatorImpls, i as ClassNameValue, n as ClassDictionary, o as CnFunction, r as ClassNameArray, s as Engine, t as ClassArray, u as Tables } from "./types2.js";
-  import { a as ConfigExtension, n as CnConfig, o as CreateCnInput } from "./compiler2.js";
-  import { clsx, createEngine, twJoin } from "./engine.js";
-
-//#region src/index.d.ts
-/**
-
-- Merge Tailwind CSS classes with clsx-style arguments (strings, arrays,
-- objects, conditionals). Drop-in replacement for `twMerge(clsx(...))`.
-  _/
-  declare const cn: CnFunction;
-  /_*tailwind-merge–compatible variadic merge (strings + nested arrays).*/
-  declare const twMerge: (...inputs: ClassNameValue[]) => string;
-  //#endregion
-  export { type ClassArray, type ClassDictionary, type ClassNameArray, type ClassNameValue, type ClassValue, type CnConfig, type CnFunction, type ConfigExtension, type CreateCnInput, type Engine, type EngineOptions, type Tables, type ValidatorImpls, clsx, cn, createEngine, twJoin, twMerge };paginación eran más invasivas o menos útiles para el MVP evaluado.
-
-## Deploy
-
-La API se puede desplegar en cualquier proveedor que permita Node y un volumen persistente para SQLite (Fly.io, Railway, Render con disco, o VPS).
-
-- **Proveedor recomendado**: **Fly.io** con un volume montado en `/data` (`DB_FILE=/data/data.sqlite`). Se eligió por simplicidad, capa gratuita y soporte nativo de volúmenes persistentes — SQLite necesita disco persistente, lo cual no está garantizado en plataformas puramente serverless.
-- **Cómo acceder**: una vez desplegada, la API queda disponible en la URL pública asignada por el proveedor (por ejemplo `https://reto-geest.fly.dev`). Se puede verificar con `curl https://<host>/tasks`.
-
-Pasos (Fly.io):
-
-```bash
-fly launch --no-deploy
-fly volumes create data --size 1
-# en fly.toml: [[mounts]] source="data" destination="/data"
-fly secrets set NOTIFY_URL=https://...
-fly deploy
-```
+- Deploy en Vercel (el build de Vite se arrastra y suelta directo)
+- Tests con `bun:test` + Testing Library — `useContactFilters` es el más crítico de cubrir
+- Persistencia en `localStorage` para sobrevivir a un refresh
